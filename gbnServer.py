@@ -1,36 +1,32 @@
-import socket
 import sys
+import socket
 import threading
-import pickle
 
-class clientHandler(threading.Thread):
-	def __init__(self, newTuple):
-		threading.Thread.__init__(self)
-		self.client = newTuple[0]
-		self.address = newTuple[1]
-	
-	def run(self):
-		filename = 's.txt'		
-		with open(filename, "rb") as fh:
-			b = True
-			while b:
-				b = fh.read(1)
-				self.client.send(b)
-				print("Reading b = "+str(b))
-		self.client.close()
-		
+#### ack indications in int 43690
+
 def main():
-	soc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	#port filename probability
+	port = int(sys.argv[1])
+	filename = sys.argv[2]
+	prob = sys.argv[3]
+	flag = True
+	soc  = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)	
 	host = socket.gethostname()
-	port = 7734	
 	soc.bind((host,port)) 
-	soc.listen(5) 
-	while True:
-		print("Waiting on client....")
-		c = clientHandler(soc.accept())
-		c.start()
+	fileHandler = open(filename,'w')
+	while flag:	
+		receivedMsg, sender_addr = soc.recvfrom(25)	
+		msg = receivedMsg.decode('UTF-8')
+		fileHandler.write(msg)
+		if msg != 'end':
+			print('Sending Acknowledge')
+			ackPacket = bytes('packet acknowledged','UTF-8')		
+			soc.sendto(ackPacket,sender_addr)
+		else:
+			flag = False
+	fileHandler.close()
+	#soc.close()	
+	
 
-
-
-if __name__ == '__main__':
+if __name__ == '__main__':	
 	main()

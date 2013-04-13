@@ -1,0 +1,3 @@
+Client-Server Architecture of Simple-FTP
+To keep things simple so that you focus on the details of the Go-back-N protocol, you will implement Simple-
+FTP in a client-server architecture and omit the steps of opening up and terminating a connection. The Simple-FTP
