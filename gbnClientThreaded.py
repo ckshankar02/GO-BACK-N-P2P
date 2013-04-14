@@ -6,10 +6,8 @@ import threading
 
 lastSent = 0			#LAST SENT SEQUENCE NUMBER
 acked = 0				#SEQUENCE NUMBER OF LAST PACKET ACKED
-expectedAck = 1			#SEQUENCE NUMBER NEXT EXPECTED ACK
+expectedAck = 0			#SEQUENCE NUMBER NEXT EXPECTED ACK
 sendingLock = threading.Lock()
-window = {'x':'x'}
-
 
 #Thread that reads the file continuously
 class fileReader(threading.Thread):
@@ -22,8 +20,45 @@ class fileReader(threading.Thread):
 		self.MSS  = int(cmdInput[4])		#MAXIMUM SEGMENT SIZE
 		self.sock = cSock
 		self.r = receiver
-		self.currSeq = 0
 		self.start()		
+		
+	def run(self):
+		self.rdt_send()	
+		
+	def rdt_send(self):
+		fileHandle = open(self.file,'rb')
+		currSeq = 0
+		global lastSent
+		global acked
+		sendMsg = ''
+		b = True
+		while b:
+			b = fileHandle.read(1)
+			sendMsg += str(b,'UTF-8')
+			if len(sendMsg) == self.MSS or (not b):		
+				while currSeq-acked >= self.n:
+					pass
+				sender(self.sock, self.host, self.port, sendMsg, currSeq)    #Thread spawned to handle a single packet
+				currSeq += 1
+				sendMsg = ''
+						
+		sendMsg = '00000end11111'
+		sender(self.sock, self.host, self.port, sendMsg,currSeq)		#Thread spawned to send the end packet
+		lastSent = currSeq
+		fileHandle.close()
+
+		
+#Thread Class to handle the sending of a single packet
+class sender(threading.Thread):
+	def __init__(self, cSock, hst, prt, msg, s):
+		threading.Thread.__init__(self)
+		self.timer = time.time()
+		self.data = msg				#DATA OF 1 MSS SIZE TO BE SENT
+		self.seqNum = s				#SEQUENCE NUMBER OF THE PACKET
+		self.sock = cSock
+		self.host = hst				#SERVER IP ADDRESS
+		self.port = prt				#SERVER PORT
+		self.start()
 	
 	def computeChecksum(self, data):
 		sum = 0
@@ -45,82 +80,24 @@ class fileReader(threading.Thread):
 		return packet
 	
 	def run(self):
-		self.rdt_send()	
-		
-	def checkForTimeout(self):
 		global acked
-		global window
-		global sendingLock
-
 		sendingLock.acquire()
-		if len(window) > 1 and acked < self.currSeq:
-			firstPacket = window[acked+1]
-			packet = firstPacket[0]
-			sentTime = firstPacket[1]		
-			if time.time() - sentTime >= 60:
-				for i in range(acked+1, self.currSeq+1):
-					packet = window[i][0]
-					print('TIMEOUT, SEQUENCE NUMBER = '+str(i))					
-					self.sock.sendto(packet,(self.host, self.port))
-					window[i] = (packet,time.time())
-			#print(window)
-		sendingLock.release()
-		
-	
-	def rdt_send(self):
-		global lastSent
-		global acked
-		global window
-		global sendingLock
-		
-		fileHandle = open(self.file,'rb')
-		sendMsg = ''
-		b = True
-		done = 0
-		while b:
-			b = fileHandle.read(1)
-			sendMsg += str(b,'UTF-8')
-			if not b:
-				done = 1
-			if len(sendMsg) == self.MSS or (not b):		
-				while self.currSeq - acked >= self.n:
-					#sendingLock.acquire()
-					self.checkForTimeout()
-					#sendingLock.release()
-					
-				'''	sendingLock.acquire()
-				sender(self.sock, self.host, self.port, sendMsg, currSeq)    #Thread spawned to handle a single packet				
-				currSeq += 1
-				sendingLock.release()'''
-				
-				self.currSeq += 1
-				packet = self.formPacket(sendMsg, self.currSeq)
-				sendingLock.acquire()
-				window[self.currSeq] = (packet,time.time())
-				sendingLock.release()
-				self.sock.sendto(packet,(self.host, self.port))
-				#lastSent = self.currSeq
-				#print('Sent'+str(self.currSeq))
-				sendMsg = ''
-
-
-		sendMsg = '00000end11111'
-		self.currSeq += 1
-		packet = self.formPacket(sendMsg, self.currSeq)
-		sendingLock.acquire()
-		window[self.currSeq] = (packet,time.time())
-		sendingLock.release()
-		print(window)
+		packet = self.formPacket(self.data, self.seqNum)				#Packets are created here
 		self.sock.sendto(packet,(self.host, self.port))
-		print('Sent'+str(self.currSeq))
-		
-		#sender(self.sock, self.host, self.port, sendMsg,self.currSeq)		#Thread spawned to send the end packet'''
-		lastSent = self.currSeq
-		while acked < lastSent:
-			self.checkForTimeout()
-		fileHandle.close()
-
-
+		sendingLock.release()
+		try:
+			while acked < self.seqNum:
+				diff = time.time() - self.timer
+				if  diff < 5:									#RETRANSMISSION time = 5 seconds
+					pass
+				else:
+					if acked < self.seqNum:								#Rechecking the ACK
+						print('TIMEOUT, SEQUENCE NUMBER = '+str(self.seqNum))
+						self.sock.sendto(packet,(self.host, self.port))	#RETRANSMISSION of time-out packets(No ACK Received)
+						self.timer = time.time()
+		except:
+			print('Server closed its connection')
+			self.sock.close()
 		
 		
 #Thread Class to receive the ACK Packets from the Server
@@ -146,26 +123,21 @@ class receiver(threading.Thread):
 		global lastSent
 		global acked		
 		global expectedAck
-		global sendingLock
-		
 		try:
 			while lastSent <= 0 or  acked < lastSent:			
 				ackReceived, server_addr = self.sockAddr.recvfrom(2048)			#Receives the ACK packets 
-				sequenceNum , zero16, identifier = self.parseMsg(ackReceived)	
-				#print('Received:'+str(sequenceNum[0]))
+				sequenceNum , zero16, identifier = self.parseMsg(ackReceived)
+				
 				#16 bit identifier field to identify the ACK packets - 1010101010101010 [in int 43690]		
 				if int(identifier[0]) == 43690 and expectedAck == int(sequenceNum[0]):
-					sendingLock.acquire()
 					acked = int(sequenceNum[0])
-					del window[int(sequenceNum[0])]
 					expectedAck = acked+1
-					sendingLock.release()					
 				#print('Packet of Seq No.'+str(sequenceNum[0])+' Acked')
 				
 		except:
 			print('Server closed its connection')
 			self.sockAddr.close()
-		print('Receiver Ended')
+
 			
 def main():
 	host = sys.argv[1]

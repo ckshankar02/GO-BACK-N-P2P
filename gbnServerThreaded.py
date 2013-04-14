@@ -43,7 +43,7 @@ def main():
 	port = int(sys.argv[1])		#PORT ON WHICH SERVER WILL ACCEPT UDP PACKETS
 	filename = sys.argv[2]		#NAME OF THE NEW FILE CREATED
 	prob = float(sys.argv[3])	#PACKET DROP PROBABILITY
-	expSeqNum = 1				
+	expSeqNum = 0				
 	flag = True
 	
 	soc  = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)	
@@ -55,27 +55,17 @@ def main():
 	while flag:	
 		receivedMsg, sender_addr = soc.recvfrom(1024)			#Receive packets sent by client
 		sequenceNum, checksum, identifier, data = parseMsg(receivedMsg) 
-		if sequenceNum[0] == 67:
-			print('expSeqNum = '+str(expSeqNum))
-			
-		if random.uniform(0,1) > prob:							#PACKET MAY BE DROPPED BASED ON RANDOM VALUE
+		if random.uniform(0,10) > prob:							#PACKET MAY BE DROPPED BASED ON RANDOM VALUE
 			if expSeqNum == int(sequenceNum[0]):				#If the expected Packet
 				chksumVerification = verifyChecksum(data, int(checksum[0]))
 				if chksumVerification == True:
-					if sequenceNum[0] == 67:
-						print(data)
 					if data != '00000end11111':					#If not the END Packet
 						fileHandler.write(data)					#Write to FILE
 						ackPacket = formAckPackets(int(sequenceNum[0]))		#Generating ACK Packet
 						soc.sendto(ackPacket,sender_addr)					#Sending ACK
-						print('ACK SENT -'+str(sequenceNum[0]))	
-						expSeqNum += 1
 					else:
 						flag = False
-						ackPacket = formAckPackets(int(sequenceNum[0]))		#Generating ACK Packet
-						soc.sendto(ackPacket,sender_addr)					#Sending ACK
-						print('ACK SENT -'+str(sequenceNum[0]))	
-					
+					expSeqNum += 1
 		else:
 			print('PACKET LOSS, SEQUENCE NUMBER = '+str(sequenceNum[0]))	#Packet dropped if randomValue <= probability
 				
