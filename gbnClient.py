@@ -90,7 +90,7 @@ class sender(threading.Thread):
 					pass
 				else:
 					if acked < self.seqNum:								#Rechecking the ACK
-						print('RETRANSMITTING PACKET - '+str(self.seqNum))
+						print('TIMEOUT, SEQUENCE NUMBER = '+str(self.seqNum))
 						self.sock.sendto(packet,(self.host, self.port))	#RETRANSMISSION of time-out packets(No ACK Received)
 		except:
 			print('Server closed its connection')
@@ -129,7 +129,7 @@ class receiver(threading.Thread):
 				if int(identifier[0]) == 43690 and expectedAck == int(sequenceNum[0]):
 					acked = int(sequenceNum[0])
 					expectedAck = acked+1
-				print('Packet of Seq No.'+str(sequenceNum[0])+' Acked')
+				#print('Packet of Seq No.'+str(sequenceNum[0])+' Acked')
 				
 		except:
 			print('Server closed its connection')

@@ -54,10 +54,8 @@ def main():
 	
 	while flag:	
 		receivedMsg, sender_addr = soc.recvfrom(1024)			#Receive packets sent by client
-		
+		sequenceNum, checksum, identifier, data = parseMsg(receivedMsg) 
 		if random.uniform(0,10) > prob:							#PACKET MAY BE DROPPED BASED ON RANDOM VALUE
-			sequenceNum, checksum, identifier, data = parseMsg(receivedMsg) 
-		
 			if expSeqNum == int(sequenceNum[0]):				#If the expected Packet
 				chksumVerification = verifyChecksum(data, int(checksum[0]))
 				if chksumVerification == True:
@@ -69,7 +67,7 @@ def main():
 						flag = False
 					expSeqNum += 1
 		else:
-			print('PACKET DROPPPED')	#Packet dropped if randomValue <= probability
+			print('PACKET LOSS, SEQUENCE NUMBER = '+str(sequenceNum[0]))	#Packet dropped if randomValue <= probability
 				
 			
 	fileHandler.close()
