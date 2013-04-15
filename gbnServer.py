@@ -55,33 +55,30 @@ def main():
 	while flag:	
 		receivedMsg, sender_addr = soc.recvfrom(1024)			#Receive packets sent by client
 		sequenceNum, checksum, identifier, data = parseMsg(receivedMsg) 
-		if sequenceNum[0] == 67:
-			print('expSeqNum = '+str(expSeqNum))
 			
 		if random.uniform(0,1) > prob:							#PACKET MAY BE DROPPED BASED ON RANDOM VALUE
 			if expSeqNum == int(sequenceNum[0]):				#If the expected Packet
 				chksumVerification = verifyChecksum(data, int(checksum[0]))
 				if chksumVerification == True:
-					if sequenceNum[0] == 67:
-						print(data)
 					if data != '00000end11111':					#If not the END Packet
 						fileHandler.write(data)					#Write to FILE
 						ackPacket = formAckPackets(int(sequenceNum[0]))		#Generating ACK Packet
 						soc.sendto(ackPacket,sender_addr)					#Sending ACK
-						print('ACK SENT -'+str(sequenceNum[0]))	
 						expSeqNum += 1
 					else:
 						flag = False
 						ackPacket = formAckPackets(int(sequenceNum[0]))		#Generating ACK Packet
 						soc.sendto(ackPacket,sender_addr)					#Sending ACK
-						print('ACK SENT -'+str(sequenceNum[0]))	
 					
 		else:
 			print('PACKET LOSS, SEQUENCE NUMBER = '+str(sequenceNum[0]))	#Packet dropped if randomValue <= probability
 				
 			
 	fileHandler.close()
+	print('==========================================')
 	print('File Received Successfully at the Server')
+	print('p:'+str(prob))
+	print('==========================================')
 	soc.close()	
 	
 if __name__ == '__main__':	

@@ -9,7 +9,8 @@ acked = 0				#SEQUENCE NUMBER OF LAST PACKET ACKED
 expectedAck = 1			#SEQUENCE NUMBER NEXT EXPECTED ACK
 sendingLock = threading.Lock()
 window = {'x':'x'}
-
+startTime = time.time()
+endTime = startTime
 
 #Thread that reads the file continuously
 class fileReader(threading.Thread):
@@ -57,13 +58,12 @@ class fileReader(threading.Thread):
 			firstPacket = window[acked+1]
 			packet = firstPacket[0]
 			sentTime = firstPacket[1]		
-			if time.time() - sentTime >= 60:
+			if time.time() - sentTime >= 0.2:			#RETRANSMISSION TIME
 				for i in range(acked+1, self.currSeq+1):
 					packet = window[i][0]
 					print('TIMEOUT, SEQUENCE NUMBER = '+str(i))					
 					self.sock.sendto(packet,(self.host, self.port))
 					window[i] = (packet,time.time())
-			#print(window)
 		sendingLock.release()
 		
 	
@@ -72,6 +72,7 @@ class fileReader(threading.Thread):
 		global acked
 		global window
 		global sendingLock
+		global startTime
 		
 		fileHandle = open(self.file,'rb')
 		sendMsg = ''
@@ -94,13 +95,13 @@ class fileReader(threading.Thread):
 				sendingLock.release()'''
 				
 				self.currSeq += 1
+				if self.currSeq == 1:
+					startTime = time.time()
 				packet = self.formPacket(sendMsg, self.currSeq)
 				sendingLock.acquire()
 				window[self.currSeq] = (packet,time.time())
 				sendingLock.release()
 				self.sock.sendto(packet,(self.host, self.port))
-				#lastSent = self.currSeq
-				#print('Sent'+str(self.currSeq))
 				sendMsg = ''
 
 
@@ -110,9 +111,7 @@ class fileReader(threading.Thread):
 		sendingLock.acquire()
 		window[self.currSeq] = (packet,time.time())
 		sendingLock.release()
-		print(window)
 		self.sock.sendto(packet,(self.host, self.port))
-		print('Sent'+str(self.currSeq))
 		
 		#sender(self.sock, self.host, self.port, sendMsg,self.currSeq)		#Thread spawned to send the end packet'''
 		lastSent = self.currSeq
@@ -147,20 +146,21 @@ class receiver(threading.Thread):
 		global acked		
 		global expectedAck
 		global sendingLock
-		
+
 		try:
 			while lastSent <= 0 or  acked < lastSent:			
 				ackReceived, server_addr = self.sockAddr.recvfrom(2048)			#Receives the ACK packets 
 				sequenceNum , zero16, identifier = self.parseMsg(ackReceived)	
-				#print('Received:'+str(sequenceNum[0]))
+				
 				#16 bit identifier field to identify the ACK packets - 1010101010101010 [in int 43690]		
-				if int(identifier[0]) == 43690 and expectedAck == int(sequenceNum[0]):
+				#if int(identifier[0]) == 43690 and expectedAck == int(sequenceNum[0]):
+				if int(identifier[0]) == 43690:
 					sendingLock.acquire()
 					acked = int(sequenceNum[0])
+					#print('Acked :'+str(sequenceNum[0]))
 					del window[int(sequenceNum[0])]
 					expectedAck = acked+1
 					sendingLock.release()					
-				#print('Packet of Seq No.'+str(sequenceNum[0])+' Acked')
 				
 		except:
 			print('Server closed its connection')
@@ -168,15 +168,26 @@ class receiver(threading.Thread):
 		print('Receiver Ended')
 			
 def main():
+	global endTime
 	host = sys.argv[1]
 	port = int(sys.argv[2])
+	cliPort = int(input('Client Port ='))
 	cliSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)	
-	cliSocket.bind(('',3334)) 
+	cliSocket.bind(('',cliPort)) 
 	
+	startTime = time.time()
 	ackReceiver = receiver(sys.argv[1:], cliSocket)					#Thread that receives ACKs from the Server
 	fileHandler = fileReader(sys.argv[1:],cliSocket, ackReceiver) 	#Thread that reads the file and sending of packets
 	fileHandler.join() 			#Main thread waits till the sender finishes
 	ackReceiver.join()			#Main thread waits till the ACK receiver finishes
+	endTime = time.time()
+	print('=======================================')
+	print('HOST:'+host)
+	print('PORT:'+str(port))
+	print('N:'+sys.argv[4])
+	print('MSS:'+sys.argv[5])
+	print('Total Time Taken:'+str(endTime-startTime))
+	print('=======================================')
 	if cliSocket:
 		cliSocket.close()
 		
