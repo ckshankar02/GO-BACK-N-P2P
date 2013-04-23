@@ -20,29 +20,56 @@ class fileReader(threading.Thread):
 		self.port = int(cmdInput[1])		#SERVER PORT
 		self.file = cmdInput[2]				#FILE TO TRANSMIT
 		self.n    = int(cmdInput[3])		#WINDOW SIZE
-		self.MSS  = int(cmdInput[4])		#MAXIMUM SEGMENT SIZE
+		self.MSS  = int(cmdInput[4])		#MAXIMUM SEGMENT SIZE	
 		self.sock = cSock
 		self.r = receiver
 		self.currSeq = 0
 		self.start()		
 	
-	def computeChecksum(self, data):
+	'''def computeChecksum(self, data):
 		sum = 0
 		for i in range(0, len(data), 2):
 			if i+1 < len(data):
 				data16 = ord(data[i]) + (ord(data[i+1]) << 8)		#To take 16 bits at a time
 				interSum = sum + data16
 				sum = (interSum & 0xffff) + (interSum >> 16)		#'&' to ensure 16 bits are returned
-		return ~sum & 0xffff										#'&' to ensure 16 bits are returned
+		return ~sum & 0xffff										#'&' to ensure 16 bits are returned'''
+		
+		
+	def computeChecksum(self,data):
+		pos = len(data)
+		if (pos & 1):  # If odd...
+			pos -= 1
+			sum = ord(data[pos])  # Prime the sum with the odd end byte
+		else:
+			sum = 0
+ 
+		#Main code: loop to calculate the checksum
+		while pos > 0:
+			pos -= 2
+			sum += (ord(data[pos + 1]) << 8) + ord(data[pos])
+ 
+		sum = (sum >> 16) + (sum & 0xffff)
+		sum += (sum >> 16)
+ 
+		result = (~ sum) & 0xffff #Keep lower 16 bits
+		result = result >> 8 | ((result & 0xff) << 8)  # Swap bytes
+		return result
+		
 				
-	def formPacket(self, data, seq):
+	def formPacket(self, data1, seq):
 		#32 bit sequence number
 		#16 bit check of the data part
 		#16 bit 0101010101010101 -- Indicates data packet(in int 21845)
+		#data = str(data1,'UTF-8',errors='replace')
+		data1 = data1.encode('ISO-8859-1','ignore')
+		data = data1.decode('ISO-8859-1','ignore')
 		seqNum = struct.pack('=I',seq)
 		checksum = struct.pack('=H',self.computeChecksum(data))		#Computes the checksum of data
 		dataIndicator = struct.pack('=H',21845)
-		packet = seqNum+checksum+dataIndicator+bytes(data,'UTF-8')
+		#packet = seqNum+checksum+dataIndicator+bytes(data,'UTF-8')
+		packet = seqNum+checksum+dataIndicator+data.encode('ISO-8859-1','ignore')
+		#packet = seqNum+checksum+dataIndicator+data
 		return packet
 	
 	def run(self):
@@ -74,13 +101,16 @@ class fileReader(threading.Thread):
 		global sendingLock
 		global startTime
 		
-		fileHandle = open(self.file,'rb')
+		fileHandle = open(self.file,'r')
 		sendMsg = ''
+		#sendMsg = bytes('','UTF-8')
 		b = True
 		done = 0
 		while b:
 			b = fileHandle.read(1)
-			sendMsg += str(b,'UTF-8')
+			#sendMsg += str(b,'UTF-8')
+			#sendMsg += str(b,'ISO-8859-1')
+			sendMsg += b
 			if not b:
 				done = 1
 			if len(sendMsg) == self.MSS or (not b):		
@@ -103,6 +133,7 @@ class fileReader(threading.Thread):
 				sendingLock.release()
 				self.sock.sendto(packet,(self.host, self.port))
 				sendMsg = ''
+				#sendMsg = bytes('','UTF-8')
 
 
 		sendMsg = '00000end11111'
